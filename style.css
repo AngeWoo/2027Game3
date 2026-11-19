@@ -683,10 +683,15 @@ body {
 }
 
 .modal-card {
+  --pad-top: clamp(28px, 6vw, 48px);
+  --pad-x: clamp(20px, 5vw, 44px);
+  position: relative;
   width: min(92vw, 580px);
   max-height: 90vh;
   overflow-y: auto;
-  padding: clamp(28px, 6vw, 48px) clamp(20px, 5vw, 44px) clamp(24px, 5vw, 40px);
+  overscroll-behavior: contain;
+  scrollbar-width: none; /* 不顯示捲軸；內容會由 fitModal() 縮照片塞進畫面 */
+  padding: var(--pad-top) var(--pad-x) clamp(24px, 5vw, 40px);
   border-radius: 28px;
   text-align: center;
   background:
@@ -704,6 +709,32 @@ body {
   transform: scale(1) translateY(0);
   opacity: 1;
 }
+
+/* 右上角關閉鈕：樣式跟御守、檢定視窗的 × 一致。外框高度 0 且 sticky，捲動時 × 跟著卡片右上角 */
+.modal-x-wrap {
+  position: sticky;
+  top: 0; /* Chrome 的 sticky 已經會扣掉卡片的上 padding */
+  height: 0;
+  z-index: 5;
+}
+.modal-x {
+  position: absolute;
+  top: calc(10px - var(--pad-top));
+  right: calc(12px - var(--pad-x));
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 253, 248, 0.8);
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.modal-x:hover { background: #fff; color: var(--text); }
+.modal-x:focus-visible { outline: 3px solid var(--accent-1); outline-offset: 3px; }
 
 .modal-icon {
   font-size: clamp(48px, 11vw, 72px);
@@ -732,6 +763,15 @@ body {
   min-width: 0;
   text-align: center;
   text-wrap: balance;
+  word-break: keep-all; /* 只在 <wbr> 處換行，不會切成「墨西／哥」 */
+}
+/* 括號裡的地區（例如「法國巴黎」）縮小放第二行 */
+.modal-place-sub {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.55em;
+  letter-spacing: 1px;
+  color: var(--gold);
 }
 .modal-plane {
   flex: none;
@@ -817,6 +857,111 @@ body {
   .modal-overlay.show .modal-plane,
   .modal-overlay.show .modal-globe { animation: none; }
 }
+
+/* 精舍小卡：照片＋國家洲別＋介紹 */
+.modal-temple {
+  margin: 0 0 clamp(14px, 3vw, 22px);
+  text-align: left;
+}
+.modal-temple[hidden] { display: none; }
+.modal-temple-photo {
+  aspect-ratio: 4 / 3;
+  max-height: 34vh;
+  margin: 0 auto;
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(var(--accent-3-rgb), 0.16);
+  box-shadow: 0 10px 24px rgba(var(--shadow-rgb), 0.22);
+  border: 3px solid #fffaf2;
+}
+.modal-temple-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.modal-temple-photo img.loaded { opacity: 1; }
+.modal-temple-meta {
+  margin: 10px 0 6px;
+  text-align: center;
+  font-size: clamp(14px, 3.6vw, 17px);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--gold);
+}
+.modal-temple-intro {
+  position: relative;
+  font-size: clamp(14px, 3.6vw, 16px);
+  line-height: 1.7;
+  color: var(--text);
+  max-height: calc(1.7em * 3);
+  overflow: hidden;
+}
+.modal-temple-intro p { margin: 0 0 2px; }
+.modal-temple-intro { text-align: center; text-wrap: pretty; }
+.modal-temple-intro p:first-child { font-weight: 700; }
+.modal-temple-intro.clamped::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 1.7em;
+  background: linear-gradient(rgba(255, 240, 222, 0), rgba(255, 240, 222, 0.97));
+}
+.modal-temple-intro.open::after { display: none; }
+.modal-temple-intro:empty { display: none; }
+.modal-temple-more {
+  display: block;
+  margin: 4px auto 0;
+  padding: 4px 14px;
+  border: 1px solid rgba(var(--warm-ink-rgb), 0.25);
+  border-radius: 999px;
+  background: rgba(255, 250, 242, 0.8);
+  color: var(--text);
+  font-size: clamp(13px, 3.4vw, 15px);
+  font-weight: 700;
+  cursor: pointer;
+}
+.modal-temple-more[hidden] { display: none; }
+/* 有照片時，照片取代大圖示，其他間距收緊，讓整張卡片不必捲動 */
+.modal-card::-webkit-scrollbar { display: none; }
+.modal-card.has-temple { --pad-top: clamp(20px, 4vw, 34px); }
+.modal-card.has-temple .modal-icon { display: none; }
+.modal-card.has-temple .modal-place {
+  font-size: clamp(22px, 5.6vw, 34px);
+  margin-bottom: clamp(8px, 2vw, 14px);
+}
+.modal-card.has-temple .modal-name { margin-bottom: 8px; font-size: clamp(20px, 5vw, 28px); }
+.modal-card.has-temple .modal-quote { margin-bottom: clamp(14px, 3vw, 24px); line-height: 1.6; }
+/* 展開「看更多」後，只在介紹框裡捲動（不顯示捲軸），卡片本身不長高到要捲 */
+.modal-temple-intro.open {
+  max-height: 26vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.modal-temple-intro.open::-webkit-scrollbar { display: none; }
+
+/* 矮又寬的螢幕：卡片加寬，照片在左、國家與介紹在右 */
+.modal-card.temple-wide.has-temple {
+  width: min(94vw, 860px);
+  max-height: 94vh;
+  --pad-top: 18px;
+}
+.modal-card.temple-wide .modal-temple {
+  display: grid;
+  grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+}
+.modal-card.temple-wide .modal-temple-photo { max-height: 52vh; }
+.modal-card.temple-wide .modal-temple-meta { margin-top: 0; }
+.modal-card.temple-wide .modal-temple-intro { max-height: calc(1.7em * 6); }
+.modal-card.temple-wide .modal-temple-intro.open { max-height: 40vh; }
+.modal-card.temple-wide.has-temple .modal-place { margin-bottom: 8px; }
+.modal-card.temple-wide.has-temple .modal-plane,
+.modal-card.temple-wide.has-temple .modal-globe { width: 1.4em; }
 
 .modal-name {
   margin: 0 0 18px;

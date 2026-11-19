@@ -762,14 +762,155 @@ const LAND_SOUND = {
   regular: () => SFX.landRegular(),
 };
 
+// ---------- 精舍小卡（照片＋國家洲別＋介紹，資料在 temples.js） ----------
+const modalTemple = document.getElementById("modalTemple");
+const modalTempleImg = document.getElementById("modalTempleImg");
+const modalTempleMeta = document.getElementById("modalTempleMeta");
+const modalTempleIntro = document.getElementById("modalTempleIntro");
+const modalTempleMore = document.getElementById("modalTempleMore");
+const templeImgCache = new Map();
+
+// 棋子還在走的時候先把落點的照片抓下來，彈窗打開就不用等
+function preloadTemple(tile) {
+  const src = tile && tile.place && tile.place.img;
+  if (!src || templeImgCache.has(src)) return;
+  const img = new Image();
+  img.decoding = "async";
+  img.src = src;
+  templeImgCache.set(src, img);
+}
+
+function showTemple(tile) {
+  const place = tile.type === "regular" ? tile.place : null;
+  if (!modalTemple) return;
+  if (!place || !place.img) {
+    modalTemple.hidden = true;
+    modalCard.classList.remove("has-temple");
+    return;
+  }
+  modalTemple.hidden = false;
+  modalCard.classList.add("has-temple");
+  modalTempleImg.classList.remove("loaded");
+  modalTempleImg.onload = () => modalTempleImg.classList.add("loaded");
+  modalTempleImg.onerror = () => {
+    modalTemple.hidden = true;
+    modalCard.classList.remove("has-temple");
+  };
+  modalTempleImg.alt = place.name;
+  modalTempleImg.src = place.img;
+  if (modalTempleImg.complete && modalTempleImg.naturalWidth) modalTempleImg.classList.add("loaded");
+
+  // 不放國旗 emoji：Windows 不支援，會顯示成「KE」這種字母
+  modalTempleMeta.textContent = "📍 " + [place.country, place.continent].filter(Boolean).join("・");
+  modalTempleIntro.replaceChildren(
+    ...(place.intro || "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => Object.assign(document.createElement("p"), { textContent: s }))
+  );
+  modalTempleIntro.classList.remove("open", "clamped");
+  modalTempleMore.hidden = true;
+  modalTempleMore.setAttribute("aria-expanded", "false");
+  modalTempleMore.textContent = "看更多 ▾";
+  // 介紹超過 3 行才出現「看更多」（彈窗一直在版面上，只是透明，所以當下就量得到；字型晚到時再量一次）
+  const checkClamp = () => {
+    if (modalTempleIntro.classList.contains("open")) return;
+    const over = modalTempleIntro.scrollHeight > modalTempleIntro.clientHeight + 2;
+    modalTempleIntro.classList.toggle("clamped", over);
+    modalTempleMore.hidden = !over;
+  };
+  checkClamp();
+  fitModal();
+  setTimeout(() => {
+    checkClamp();
+    fitModal();
+  }, 400);
+}
+
+// 卡片內容比畫面高時，把照片縮矮（最矮 90px），讓整張卡片不用捲動
+const PHOTO_MIN = 90;
+function fitModal() {
+  const photo = modalTemple && !modalTemple.hidden ? modalTemple.querySelector(".modal-temple-photo") : null;
+  if (!photo) return;
+  photo.style.height = "";
+  photo.style.aspectRatio = "";
+  modalTempleIntro.style.maxHeight = "";
+  const overflow = () => modalCard.scrollHeight - modalCard.clientHeight;
+  // 1) 先縮照片（照片在左、文字在右的寬螢幕排法不縮，照片高度跟著文字走）
+  let over = overflow();
+  if (over > 0 && !modalCard.classList.contains("temple-wide")) {
+    photo.style.aspectRatio = "auto";
+    photo.style.height = `${Math.max(PHOTO_MIN, photo.offsetHeight - over - 2)}px`;
+    over = overflow();
+  }
+  // 2) 還是塞不下（很矮的螢幕）：縮短介紹框，多出來的字用「看更多」或框內捲動看
+  if (over > 0 && modalTempleIntro.children.length) {
+    const line = parseFloat(getComputedStyle(modalTempleIntro).lineHeight) || 24;
+    const minH = line * (modalTempleIntro.classList.contains("open") ? 3 : 1);
+    modalTempleIntro.style.maxHeight = `${Math.max(minH, modalTempleIntro.clientHeight - over - 2)}px`;
+    if (!modalTempleIntro.classList.contains("open") && modalTempleIntro.scrollHeight > modalTempleIntro.clientHeight + 2) {
+      modalTempleIntro.classList.add("clamped");
+      if (modalTempleMore.hidden) {
+        modalTempleMore.hidden = false; // 按鈕本身也佔高度，再扣一次
+        const more = overflow();
+        if (more > 0) modalTempleIntro.style.maxHeight = `${Math.max(minH, modalTempleIntro.clientHeight - more - 2)}px`;
+      }
+    }
+  }
+}
+// 矮又寬的螢幕（筆電橫放）：照片放左邊、介紹放右邊，省下垂直空間
+const templeWideMQ = window.matchMedia("(max-height: 760px) and (min-width: 700px)");
+function applyTempleWide() {
+  modalCard.classList.toggle("temple-wide", templeWideMQ.matches);
+}
+applyTempleWide();
+templeWideMQ.addEventListener("change", () => {
+  applyTempleWide();
+  if (modalOverlay.classList.contains("show")) fitModal();
+});
+window.addEventListener("resize", () => {
+  if (modalOverlay.classList.contains("show")) fitModal();
+});
+
+if (modalTempleMore) {
+  modalTempleMore.addEventListener("click", () => {
+    const open = modalTempleIntro.classList.toggle("open");
+    modalTempleMore.setAttribute("aria-expanded", String(open));
+    modalTempleMore.textContent = open ? "收起 ▴" : "看更多 ▾";
+    if (open) modalTempleIntro.scrollTop = 0;
+    fitModal();
+  });
+}
+
+// 彈窗標題：只在「真如苑／精舍／佈教所」等詞的邊界換行；括號內的地區縮小放第二行
+function setPlaceName(full) {
+  const m = full.match(/^(.*?)[（(]([^）)]*)[）)]$/);
+  const main = m ? m[1] : full;
+  const parts = main
+    .replace(/^真如苑(?=.)/, "真如苑\u0000")
+    .replace(/、/g, "、\u0000")
+    .replace(/(.)(佈教所|精舍|本部|中心)/g, "$1\u0000$2")
+    .split("\u0000");
+  const nodes = [];
+  parts.forEach((p, i) => {
+    if (i) nodes.push(document.createElement("wbr"));
+    nodes.push(document.createTextNode(p));
+  });
+  if (m) nodes.push(Object.assign(document.createElement("span"), { className: "modal-place-sub", textContent: m[2] }));
+  modalPlace.replaceChildren(...nodes);
+}
+
 function openModal(tile) {
   const isLuck = tile.type === "chance" || tile.type === "fate";
   const q = isLuck ? parseWt(pickFrom(WT)) : parseYuange(pickFrom(YUANGE));
   modalIcon.innerHTML = tile.icon;
-  modalPlace.textContent = tile.fullName || tile.name;
+  setPlaceName(tile.fullName || tile.name);
+  showTemple(tile);
   modalName.textContent = q.source || (isLuck ? tile.name : "今日實踐");
   modalNum.textContent = q.num ? `《${q.num}》` : "";
   modalQuote.textContent = q.text || tile.quote;
+  fitModal(); // 文字都放好之後再量一次高度
   afterModal = true; // 每一格關閉後都接一個小視窗（機會／命運也含在內）
   modalOverlay.classList.add("show");
   dialogOpened(modalCard, modalClose);
@@ -808,6 +949,8 @@ function endTurn() {
 }
 
 modalClose.addEventListener("click", closeModal);
+const modalX = document.getElementById("modalX");
+if (modalX) modalX.addEventListener("click", closeModal);
 modalOverlay.addEventListener("click", (e) => {
   if (e.target === modalOverlay) closeModal();
 });
@@ -1854,6 +1997,7 @@ async function handleRoll() {
 
   const values = Array.from({ length: DICE_COUNT }, () => 1 + Math.floor(Math.random() * 6));
   const roll = values.reduce((a, b) => a + b, 0);
+  preloadTemple(TILES[(position + roll) % TILE_COUNT]);
 
   await rollDiceAnimation(values);
   await delay(150);
